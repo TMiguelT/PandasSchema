@@ -9,7 +9,7 @@ import operator
 from . import column
 from .validation_warning import ValidationWarning
 from .errors import PanSchArgumentError
-from pandas.api.types import is_categorical_dtype, is_numeric_dtype
+from pandas.api.types import is_categorical_dtype, is_datetime64_any_dtype, is_numeric_dtype
 
 
 class _BaseValidation:
@@ -85,8 +85,8 @@ class _SeriesValidation(_BaseValidation):
         simple_validation = ~self.validate(series)
         if column.allow_empty:
             # Failing results are those that are not empty, and fail the validation
-            # explicitly check to make sure the series isn't a category because issubdtype will FAIL if it is
-            if is_categorical_dtype(series) or is_numeric_dtype(series):
+            # explicitly check to make sure the series isn't a category/datetime because issubdtype will FAIL if it is
+            if is_categorical_dtype(series) or is_datetime64_any_dtype(series) or is_numeric_dtype(series):
                 validated = ~series.isnull() & simple_validation
             else:
                 validated = (series.str.len() > 0) & simple_validation

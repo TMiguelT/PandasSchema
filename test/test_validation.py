@@ -688,3 +688,27 @@ class PandasDtypeTests(ValidationTestBase):
         errors = self.validator.get_errors(pd.Series(['aa', 'bb', 'd'], dtype='category'),
                                            Column('', allow_empty=True))
         self.assertEqual(len(errors), 3)
+
+class GetErrorAllowEmptyDatetimeTests(ValidationTestBase):
+    """
+    Tests for datetime valued columns where allow_empty=True
+    """
+
+    def setUp(self):
+        match_val = datetime.datetime(2020, 11, 1)
+        self.validator = CustomSeriesValidation(lambda s: s == match_val, 'did not match target date')
+
+    def test_valid(self):
+        series = pd.Series(['2020-11-01'], dtype='datetime64[ns]')
+        errors = self.validator.get_errors(series, Column('', allow_empty=True))
+        self.assertEqual(len(errors), 0)
+
+    def test_valid_invalid(self):
+        series = pd.Series(['2020-11-01', '2025-01-01'], dtype='datetime64[ns]')
+        errors = self.validator.get_errors(series, Column('', allow_empty=True))
+        self.assertEqual(len(errors), 1)
+
+    def test_valid_invalid_empty(self):
+        series = pd.Series(['2020-11-01', '2025-01-01', pd.NaT, np.NaN], dtype='datetime64[ns]')
+        errors = self.validator.get_errors(series, Column('', allow_empty=True))
+        self.assertEqual(len(errors), 1)
