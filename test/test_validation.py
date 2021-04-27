@@ -316,6 +316,44 @@ class InListCaseInsensitive(ValidationTestBase):
             'accepts elements that are not in the validation list'
         )
 
+class InListIgnoringNas(ValidationTestBase):
+    def setUp(self):
+        self.validator = InListValidation(['a', 'b', 'c'], ignore_nas=True)
+
+    def test_valid_elements(self):
+        self.validate_and_compare(
+            [
+                np.NaN
+            ],
+            True,
+            'does not ignore NaNs when it should'
+        )
+
+class InListNotIgnoringNas(ValidationTestBase):
+    def setUp(self):
+        self.validator = InListValidation(['a', 'b', 'c'], ignore_nas=False)
+
+    def test_valid_elements(self):
+        self.validate_and_compare(
+            [
+                np.NaN
+            ],
+            False,
+            'ignores NaNs when it should not'
+        )
+
+class InListIgnoringNas(ValidationTestBase):
+    def setUp(self):
+        self.validator = InListValidation(['a', 'b', 'c'], ignore_nas=True)
+
+    def test_valid_elements(self):
+        self.validate_and_compare(
+            [
+                np.NaN
+            ],
+            True,
+            'does not ignore NaNs'
+        )
 
 class DateFormat(ValidationTestBase):
     def setUp(self):

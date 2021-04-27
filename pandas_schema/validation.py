@@ -369,12 +369,14 @@ class InListValidation(_SeriesValidation):
     Checks that each element in this column is contained within a list of possibilities
     """
 
-    def __init__(self, options: typing.Iterable, case_sensitive: bool = True, **kwargs):
+    def __init__(self, options: typing.Iterable, case_sensitive: bool = True, ignore_nas: bool = False, **kwargs):
         """
         :param options: A list of values to check. If the value of a cell is in this list, it is considered to pass the
             validation
+        :param ignore_nas: ignore nas (boolean, default False)
         """
         self.case_sensitive = case_sensitive
+        self.ignore_nan = ignore_nan
         self.options = options
         super().__init__(**kwargs)
 
@@ -385,9 +387,14 @@ class InListValidation(_SeriesValidation):
 
     def validate(self, series: pd.Series) -> pd.Series:
         if self.case_sensitive:
-            return series.isin(self.options)
+            is_in_options = series.isin(self.options)
         else:
-            return series.str.lower().isin([s.lower() for s in self.options])
+            is_in_options = series.str.lower().isin([s.lower() for s in self.options])
+
+        if self.ignore_nas:
+            is_in_options = is_in_options | series.isna()
+
+        return is_in_options
 
 
 class DateFormatValidation(_SeriesValidation):
