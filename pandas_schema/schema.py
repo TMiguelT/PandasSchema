@@ -60,7 +60,9 @@ class Schema:
                 columns_to_pair = [column for column in self.columns if column.name in columns]
             else:
                 raise PanSchArgumentError(
-                    'Columns {} passed in are not part of the schema'.format(set(columns).difference(self.columns))
+                    'Columns {} passed in are not part of the schema'.format(set(columns).difference(
+                        self.get_column_names()
+                    ))
                 )
 
         # We associate the column objects in the schema with data frame series either by name or by position, depending
