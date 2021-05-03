@@ -10,6 +10,7 @@ from . import column
 from .validation_warning import ValidationWarning
 from .errors import PanSchArgumentError
 from pandas.api.types import is_categorical_dtype, is_numeric_dtype
+from typing import List, Union
 
 
 class _BaseValidation:
@@ -214,27 +215,122 @@ class InRangeValidation(_SeriesValidation):
         return (series >= self.min) & (series < self.max)
 
 
+class IsTypeValidation(_SeriesValidation):
+    """
+    Checks that each element in the series equals one of the provided allowed types.
+
+    Examples
+    --------
+    >>> v = IsTypeValidation(allowed_types=[str, int])
+    >>> s = pd.Series(data=["alpha", 1.4, True, "beta", 5])
+    >>> v.validate(series=s)
+    0     True
+    1    False
+    2    False
+    3     True
+    4     True
+    dtype: bool
+    """
+
+    def __init__(self, allowed_types: List, **kwargs):
+        """
+        :param allowed_types: List describing which types are allowed. The list may only contain the build-in
+            Python-types "str", "int", "float" and/or "bool".
+        """
+        self._allowed_build_in_types = [str, int, float, bool]
+        self.allowed_types = allowed_types
+        super().__init__(**kwargs)
+        self._validate_input()
+
+    def _validate_input(self):
+        if type(self.allowed_types) != list:
+            raise PanSchArgumentError('The argument "allowed_types" passed to IsTypeValidation is not of type list. '
+                                      'Provide a list containing one or more of the Python built-in types "str", '
+                                      '"int", "float" or "bool".')
+
+        for allowed_type in self.allowed_types:
+            if allowed_type not in self._allowed_build_in_types:
+                raise PanSchArgumentError('The item "{}" provided in the argument "allowed_types" as passed to '
+                                          'IsTypeValidation is not of the correct type. Provide one of Python built-in '
+                                          'types "str", "int", "float" or "bool".'.format(allowed_type))
+
+    @property
+    def default_message(self):
+        return "is not of type listed in {}".format(self.allowed_types.__str__())
+
+    def get_errors(self, series: pd.Series, column: 'column.Column'):
+
+        # Numpy dtypes other than 'object' can be validated with IsDtypeValidation instead.
+        if not series.dtype == np.dtype(object):
+            np_allowed_types = [np.dtype(allowed_type) for allowed_type in self.allowed_types]
+            alternative_validation_method = IsDtypeValidation(dtype=np_allowed_types)
+            return alternative_validation_method.get_errors(series=series, column=column)
+
+        return super().get_errors(series=series, column=column)
+
+    def validate(self, series: pd.Series) -> pd.Series:
+        return series.apply(type).isin(self.allowed_types)
+
+
 class IsDtypeValidation(_BaseValidation):
     """
-    Checks that a series has a certain numpy dtype
+    Checks that a series has (one of) the required numpy dtype(s).
+
+    Examples
+    --------
+    >>> v = IsDtypeValidation(dtype=[np.str0, np.float64])
+    >>> s = pd.Series(data=np.array([1, 2, 3, 4, 5]), name='IntCol')
+    >>> err = v.get_errors(series=s, column=Column(name=s.name.__str__()))
+    >>> err[0].__str__()
+    "The column IntCol has a dtype of int32 which is not a subclass of the required type [<class 'numpy.str_'>,
+    <class 'numpy.float64'>]"
     """
 
-    def __init__(self, dtype: np.dtype, **kwargs):
+    def __init__(self, dtype: Union[np.dtype, List[np.dtype]], **kwargs):
         """
-        :param dtype: The numpy dtype to check the column against
+        :param dtype: The numpy dtype to check the column against. Input can be either a single dtype or a list of
+            dtypes.
         """
         self.dtype = dtype
+        if type(dtype) is not list:
+            self.dtype = [dtype]
         super().__init__(**kwargs)
 
-    def get_errors(self, series: pd.Series, column: 'column.Column' = None):
-        if not np.issubdtype(series.dtype, self.dtype):
+    @staticmethod
+    def convert_series_dtype_to_system_default(series: pd.Series) -> pd.Series:
+        """ On Windows np.dtype(int) returns np.int32, whereas Pandas.Series([1, 2, 3, ..., n]).dtype returns np.int64.
+        Linux does return np.int64 for np.dtype(int). Other types (float, bool, etc) return equal types.
+        For this reason, the series is converted back and forth to ensure equal types between pandas and numpy."""
+
+        # If not numeric, no conversion necessary
+        if not np.issubdtype(series.dtype, np.number):
+            return series
+
+        # Convert
+        python_type = type(np.zeros(1, series.dtype).tolist()[0])  # First convert to Python type.
+        return series.astype(python_type)  # Then convert back based on system preference.
+
+    def get_errors(self, series: pd.Series, column: 'column.Column' = None) -> list:
+
+        # Convert to system dependent default numpy dtype.
+        series_converted_type = self.convert_series_dtype_to_system_default(series=series)
+
+        # Validate and return (possible) error messages
+        if not self.validate(series=series_converted_type):
             return [ValidationWarning(
                 'The column {} has a dtype of {} which is not a subclass of the required type {}'.format(
-                    column.name if column else '', series.dtype, self.dtype
+                    column.name if column else '', series_converted_type.dtype, self.dtype
                 )
             )]
         else:
             return []
+
+    def validate(self, series: pd.Series) -> bool:
+
+        # Convert to system dependent default numpy dtype.
+        series_converted_type = self.convert_series_dtype_to_system_default(series=series)
+
+        return True in [np.issubdtype(series_converted_type.dtype, given_dtype) for given_dtype in self.dtype]
 
 
 class CanCallValidation(_SeriesValidation):
